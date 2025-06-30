@@ -5,8 +5,8 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.support.ui import Select
-import os
+from selenium.webdriver.support.ui import Select # Import the Select class
+import os 
 
 USERNAME = input("Enter your Pingala username: ")
 PASSWORD = input("Enter your Pingala password: ")
@@ -14,8 +14,9 @@ PASSWORD = input("Enter your Pingala password: ")
 driver = webdriver.Chrome()
 driver.get("https://pingala.iitk.ac.in/")
 
-wait = WebDriverWait(driver, 20)
+wait = WebDriverWait(driver, 20) # Increased timeout for robustness
 
+# If iframe present, switch to it
 try:
     iframe = wait.until(EC.presence_of_element_located((By.TAG_NAME, "iframe")))
     driver.switch_to.frame(iframe)
@@ -31,6 +32,7 @@ password_box.send_keys(PASSWORD)
 password_box.send_keys(Keys.RETURN)
 print("Login credentials entered.")
 
+# After successful login, wait for the page to load and then navigate the menu
 try:
     academic_management_link = wait.until(
         EC.element_to_be_clickable((By.XPATH, "//span[text()='Academic Management']"))
@@ -78,29 +80,43 @@ try:
     show_button.click()
     print("Clicked 'Show' button. Waiting for table to load.")
 
+    # --- New: Select 'All' records per page ---
+    # First, wait for the select element to be present and visible
     display_records_select_element = wait.until(
         EC.visibility_of_element_located((By.NAME, "datatable_length"))
     )
     
+    # Create a Select object
     display_records_dropdown = Select(display_records_select_element)
     
+    # Get the current number of rows before changing the display
     initial_rows_xpath = "//table[@id='datatable']/tbody/tr"
     initial_row_count = len(driver.find_elements(By.XPATH, initial_rows_xpath))
     print(f"Initial number of rows displayed: {initial_row_count}")
 
+    # Select the 'All' option by its value
     display_records_dropdown.select_by_value("-1")
     print("Selected 'All' records per page.")
 
+    # IMPORTANT: Wait for the table to update after selecting 'All'
+    # We can wait for the number of rows to be greater than the initial count,
+    # or simply wait for the presence of the last expected row if there's a large number.
+    # For 'All', we expect the number of rows to change.
+    # A robust wait could be waiting for the stale element to refresh or for the count to change.
+    # Let's wait for the number of rows to be greater than the initial, or just for more time.
     try:
+        # A more robust wait: wait until the number of elements (rows) changes
         wait.until(lambda d: len(d.find_elements(By.XPATH, initial_rows_xpath)) > initial_row_count or \
-                             (len(d.find_elements(By.XPATH, initial_rows_xpath)) == initial_row_count and initial_row_count > 0 and display_records_select_element.get_attribute("value") == "-1"))
+                             len(d.find_elements(By.XPATH, initial_rows_xpath)) == initial_row_count and initial_row_count > 0 and display_records_select_element.get_attribute("value") == "-1")
         print("Table appears to have updated with 'All' records.")
     except Exception as update_err:
         print(f"Warning: Table update might not have completed as expected after selecting 'All': {update_err}")
         print("Proceeding anyway, but data might be incomplete if table didn't fully load.")
     
+    # Add a short sleep just in case the DOM needs a moment to settle after the JS update
     time.sleep(1) 
 
+    # --- Data Extraction and FCH URL Extraction ---
     timetable_table = wait.until(
         EC.presence_of_element_located((By.ID, "datatable"))
     )
@@ -149,7 +165,7 @@ try:
         
         cells = current_row.find_elements(By.TAG_NAME, "td")
         
-        row_data = [cell.text.strip() for cell in cells]
+        row_data = [cell.text for cell in cells]
         
         fch_url_for_row = ""
 
@@ -202,15 +218,9 @@ try:
     print(df.head())
     print(f"\nDataFrame shape: {df.shape}")
 
-    try:
-        csv_file_path = os.path.join(os.getcwd(), "timetable_data.csv")
-        df.to_csv(csv_file_path, index=False)
-        print(f"\nDataFrame saved to: {csv_file_path}")
-    except Exception as csv_err:
-        print(f"Error saving DataFrame to CSV: {csv_err}")
-
 except Exception as e:
     print(f"An error occurred during the process: {e}")
-
+# To save the DataFrame to a CSV file
+df.to_csv('timetable_data_raw.csv', index=False)
 input("Press Enter to quit...")
 driver.quit()
